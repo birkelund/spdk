@@ -64,6 +64,25 @@ uint32_t expected_feature_cdw12 = 1;
 typedef void (*verify_request_fn_t)(struct nvme_request *req);
 verify_request_fn_t verify_fn;
 
+static void nvme_request_reset_sgl(void *cb_arg, uint32_t sgl_offset)
+{
+}
+
+static int nvme_request_next_sge(void *cb_arg, void **address, uint32_t *length)
+{
+        uint32_t *lba_count = cb_arg;
+
+	/*
+	 * We need to set address to something here, since the SGL splitting code will
+	 *  use it to determine PRP compatibility.  Just use a rather arbitrary address
+	 *  for now - these tests will not actually cause data to be read from or written
+	 *  to this address.
+	 */
+	*address = (void *)(uintptr_t)0x10000000;
+	*length = *lba_count;
+	return 0;
+}
+
 static void verify_firmware_log_page(struct nvme_request *req)
 {
 	uint32_t temp_cdw10;
@@ -146,6 +165,20 @@ static void verify_io_raw_cmd(struct nvme_request *req)
 }
 
 static void verify_io_raw_cmd_with_md(struct nvme_request *req)
+{
+	struct spdk_nvme_cmd	command = {};
+
+	CU_ASSERT(memcmp(&req->cmd, &command, sizeof(req->cmd)) == 0);
+}
+
+static void verify_iov_raw_cmd(struct nvme_request *req)
+{
+	struct spdk_nvme_cmd	command = {};
+
+	CU_ASSERT(memcmp(&req->cmd, &command, sizeof(req->cmd)) == 0);
+}
+
+static void verify_iov_raw_cmd_with_md(struct nvme_request *req)
 {
 	struct spdk_nvme_cmd	command = {};
 
@@ -518,6 +551,33 @@ test_io_raw_cmd_with_md(void)
 }
 
 static void
+test_iov_raw_cmd(void)
+{
+	DECLARE_AND_CONSTRUCT_CTRLR();
+	struct spdk_nvme_qpair	qpair = {};
+	struct spdk_nvme_cmd	cmd = {};
+
+	verify_fn = verify_iov_raw_cmd;
+
+	spdk_nvme_ctrlr_cmd_iov_raw(&ctrlr, &qpair, &cmd, NULL, NULL,
+				    nvme_request_reset_sgl, nvme_request_next_sge);
+}
+
+static void
+test_iov_raw_cmd_with_md(void)
+{
+	DECLARE_AND_CONSTRUCT_CTRLR();
+	struct spdk_nvme_qpair	qpair = {};
+	struct spdk_nvme_cmd	cmd = {};
+
+	verify_fn = verify_iov_raw_cmd_with_md;
+
+	spdk_nvme_ctrlr_cmd_iov_raw_with_md(&ctrlr, &qpair, &cmd, NULL, NULL,
+				    nvme_request_reset_sgl, nvme_request_next_sge, NULL);
+}
+
+
+static void
 test_get_log_pages(void)
 {
 	test_generic_get_log_pages();
@@ -625,6 +685,8 @@ int main(int argc, char **argv)
 		|| CU_add_test(suite, "test ctrlr cmd abort_cmd", test_abort_cmd) == NULL
 		|| CU_add_test(suite, "test ctrlr cmd io_raw_cmd", test_io_raw_cmd) == NULL
 		|| CU_add_test(suite, "test ctrlr cmd io_raw_cmd_with_md", test_io_raw_cmd_with_md) == NULL
+		|| CU_add_test(suite, "test ctrlr cmd iov_raw_cmd", test_iov_raw_cmd) == NULL
+		|| CU_add_test(suite, "test ctrlr cmd iov_raw_cmd_with_md", test_iov_raw_cmd_with_md) == NULL
 		|| CU_add_test(suite, "test ctrlr cmd namespace_attach", test_namespace_attach) == NULL
 		|| CU_add_test(suite, "test ctrlr cmd namespace_detach", test_namespace_detach) == NULL
 		|| CU_add_test(suite, "test ctrlr cmd namespace_create", test_namespace_create) == NULL

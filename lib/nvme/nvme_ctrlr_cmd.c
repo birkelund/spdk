@@ -76,6 +76,60 @@ spdk_nvme_ctrlr_cmd_io_raw_with_md(struct spdk_nvme_ctrlr *ctrlr,
 }
 
 int
+spdk_nvme_ctrlr_cmd_iov_raw(struct spdk_nvme_ctrlr *ctrlr,
+			   struct spdk_nvme_qpair *qpair,
+			   struct spdk_nvme_cmd *cmd,
+			   spdk_nvme_cmd_cb cb_fn, void *cb_arg,
+			   spdk_nvme_req_reset_sgl_cb reset_sgl_fn,
+			   spdk_nvme_req_next_sge_cb next_sge_fn)
+{
+	struct nvme_request	*req;
+	struct nvme_payload payload;
+
+	if (reset_sgl_fn == NULL || next_sge_fn == NULL) {
+		return -EINVAL;
+	}
+
+	payload = NVME_PAYLOAD_SGL(reset_sgl_fn, next_sge_fn, cb_arg, NULL);
+
+	req = nvme_allocate_request(qpair, &payload, cmd->cdw12 & 0xffff, cb_fn, cb_arg);
+	if (req == NULL) {
+		return -ENOMEM;
+	}
+
+	memcpy(&req->cmd, cmd, sizeof(req->cmd));
+
+	return nvme_qpair_submit_request(qpair, req);
+}
+
+int
+spdk_nvme_ctrlr_cmd_iov_raw_with_md(struct spdk_nvme_ctrlr *ctrlr,
+			   struct spdk_nvme_qpair *qpair,
+			   struct spdk_nvme_cmd *cmd,
+			   spdk_nvme_cmd_cb cb_fn, void *cb_arg,
+			   spdk_nvme_req_reset_sgl_cb reset_sgl_fn,
+			   spdk_nvme_req_next_sge_cb next_sge_fn, void *md_buf)
+{
+	struct nvme_request	*req;
+	struct nvme_payload payload;
+
+	if (reset_sgl_fn == NULL || next_sge_fn == NULL) {
+		return -EINVAL;
+	}
+
+	payload = NVME_PAYLOAD_SGL(reset_sgl_fn, next_sge_fn, cb_arg, md_buf);
+
+	req = nvme_allocate_request(qpair, &payload, cmd->cdw12 & 0xffff, cb_fn, cb_arg);
+	if (req == NULL) {
+		return -ENOMEM;
+	}
+
+	memcpy(&req->cmd, cmd, sizeof(req->cmd));
+
+	return nvme_qpair_submit_request(qpair, req);
+}
+
+int
 spdk_nvme_ctrlr_cmd_admin_raw(struct spdk_nvme_ctrlr *ctrlr,
 			      struct spdk_nvme_cmd *cmd,
 			      void *buf, uint32_t len,
